@@ -120,6 +120,7 @@ namespace
   constexpr int kMaxWebDavSyncMinutes = 1440;
   constexpr int kDefaultProxyPort = 8045;
   constexpr int kDefaultProxyTimeoutSec = 120;
+  constexpr bool kDisableThirdPartyNetwork = true;
   constexpr int kLowQuotaThresholdPercent = 10;
   constexpr int kLowQuotaPromptCooldownSeconds = 30 * 60;
   constexpr int kProxyLowQuotaHintCooldownSeconds = 5 * 60;
@@ -625,10 +626,11 @@ namespace
   {
     std::wstring language = L"zh-CN";
     int languageIndex = 0;
-    std::wstring ideExe = L"Code.exe";
+    std::wstring clientTarget = L"codex";
+    std::wstring ideExe = L"Codex.exe";
     std::wstring theme = L"auto";
     TabVisibilityConfig tabVisibility{};
-    bool autoUpdate = true;
+    bool autoUpdate = false;
     bool enableAutoRefreshQuota = true;
     bool autoMarkAbnormalAccounts = true;
     bool autoDeleteAbnormalAccounts = false;
@@ -668,6 +670,46 @@ namespace
     std::vector<std::wstring> customModels;
     std::wstring stealthTomlExtra;
   };
+
+  void ApplyThirdPartyNetworkPolicy(AppConfig &cfg)
+  {
+    if (!kDisableThirdPartyNetwork)
+    {
+      return;
+    }
+    cfg.autoUpdate = false;
+    cfg.cloudAccountUrl.clear();
+    cfg.cloudAccountAutoDownload = false;
+    cfg.cloudAccountPasswordConfigured = false;
+    cfg.webdavEnabled = false;
+    cfg.webdavAutoSync = false;
+    cfg.webdavUrl.clear();
+    cfg.webdavUsername.clear();
+    cfg.webdavPasswordConfigured = false;
+  }
+
+  void DeleteThirdPartyNetworkSecrets()
+  {
+    if (!kDisableThirdPartyNetwork)
+    {
+      return;
+    }
+    std::error_code ec;
+    fs::remove(GetCloudAccountSecretPath(), ec);
+    ec.clear();
+    fs::remove(GetWebDavSecretPath(), ec);
+  }
+
+  bool IsOpenAiOfficialExternalUrl(const std::wstring &url)
+  {
+    const std::wstring lower = ToLowerCopy(url);
+    return lower.rfind(L"https://auth.openai.com/", 0) == 0 ||
+           lower == L"https://auth.openai.com" ||
+           lower.rfind(L"https://api.openai.com/", 0) == 0 ||
+           lower == L"https://api.openai.com" ||
+           lower.rfind(L"https://chatgpt.com/", 0) == 0 ||
+           lower == L"https://chatgpt.com";
+  }
 
   std::wstring NormalizeCloseWindowBehavior(const std::wstring &value)
   {
@@ -2393,15 +2435,68 @@ namespace
   const std::vector<std::wstring> &GetSupportedIdeList()
   {
     static const std::vector<std::wstring> kList = {
-        L"Code.exe", L"Trae.exe", L"Kiro.exe", L"Antigravity.exe"};
+        L"Codex.exe", L"Code.exe", L"Trae.exe", L"Kiro.exe",
+        L"Antigravity.exe"};
     return kList;
+  }
+
+  const std::vector<std::wstring> &GetSupportedClientTargetList()
+  {
+    static const std::vector<std::wstring> kList = {
+        L"codex", L"vscode", L"trae", L"kiro", L"antigravity"};
+    return kList;
+  }
+
+  std::wstring ClientTargetToWindowsExe(const std::wstring &clientTarget)
+  {
+    const std::wstring target = ToLowerCopy(clientTarget);
+    if (target == L"vscode")
+      return L"Code.exe";
+    if (target == L"trae")
+      return L"Trae.exe";
+    if (target == L"kiro")
+      return L"Kiro.exe";
+    if (target == L"antigravity")
+      return L"Antigravity.exe";
+    return L"Codex.exe";
+  }
+
+  std::wstring IdeExeToClientTarget(const std::wstring &ideExe)
+  {
+    if (_wcsicmp(ideExe.c_str(), L"Code.exe") == 0)
+      return L"vscode";
+    if (_wcsicmp(ideExe.c_str(), L"Trae.exe") == 0)
+      return L"trae";
+    if (_wcsicmp(ideExe.c_str(), L"Kiro.exe") == 0)
+      return L"kiro";
+    if (_wcsicmp(ideExe.c_str(), L"Antigravity.exe") == 0)
+      return L"antigravity";
+    return L"codex";
+  }
+
+  std::wstring NormalizeClientTarget(const std::wstring &clientTarget,
+                                     const std::wstring &fallbackIdeExe = L"")
+  {
+    const std::wstring target = ToLowerCopy(clientTarget);
+    for (const auto &it : GetSupportedClientTargetList())
+    {
+      if (it == target)
+      {
+        return it;
+      }
+    }
+    if (!fallbackIdeExe.empty())
+    {
+      return IdeExeToClientTarget(fallbackIdeExe);
+    }
+    return L"codex";
   }
 
   std::wstring NormalizeIdeExe(const std::wstring &ideExe)
   {
     if (ideExe.empty())
     {
-      return L"Code.exe";
+      return L"Codex.exe";
     }
 
     for (const auto &it : GetSupportedIdeList())
@@ -2411,7 +2506,7 @@ namespace
         return it;
       }
     }
-    return L"Code.exe";
+    return L"Codex.exe";
   }
 
   std::wstring NormalizeTheme(const std::wstring &theme)
@@ -2745,12 +2840,13 @@ namespace
 
     const std::wstring language = ExtractJsonField(json, L"language");
     const int languageIndex = ExtractJsonIntField(json, L"languageIndex", 0);
+    const std::wstring clientTarget = ExtractJsonField(json, L"clientTarget");
     const std::wstring ide = ExtractJsonField(json, L"ideExe");
     const std::wstring theme = ExtractJsonField(json, L"theme");
     std::wstring tabVisibilityJson;
     const bool hasTabVisibility =
         ExtractJsonObjectField(json, L"tabVisibility", tabVisibilityJson);
-    const bool autoUpdate = ExtractJsonBoolField(json, L"autoUpdate", true);
+    const bool autoUpdate = ExtractJsonBoolField(json, L"autoUpdate", false);
     const bool hasEnableAutoRefreshQuota =
         json.find(L"\"enableAutoRefreshQuota\"") != std::wstring::npos;
     const bool enableAutoRefreshQuota = hasEnableAutoRefreshQuota
@@ -2860,7 +2956,8 @@ namespace
     }
     const auto langs = LoadLanguageIndexList();
     out.languageIndex = FindLanguageIndexByCode(langs, out.language);
-    out.ideExe = NormalizeIdeExe(ide);
+    out.clientTarget = NormalizeClientTarget(clientTarget, ide);
+    out.ideExe = ClientTargetToWindowsExe(out.clientTarget);
     out.theme = NormalizeTheme(theme);
     if (hasTabVisibility)
     {
@@ -2923,6 +3020,7 @@ namespace
     out.proxyDefaultModel = proxyDefaultModel;
     out.customModels = customModels;
     out.stealthTomlExtra = stealthTomlExtra;
+    ApplyThirdPartyNetworkPolicy(out);
     return true;
   }
 
@@ -2937,7 +3035,8 @@ namespace
       }
       const auto langs = LoadLanguageIndexList();
       tmp.languageIndex = FindLanguageIndexByCode(langs, tmp.language);
-      tmp.ideExe = NormalizeIdeExe(tmp.ideExe);
+      tmp.clientTarget = NormalizeClientTarget(tmp.clientTarget, tmp.ideExe);
+      tmp.ideExe = ClientTargetToWindowsExe(tmp.clientTarget);
       tmp.theme = NormalizeTheme(tmp.theme);
       tmp.closeWindowBehavior =
           NormalizeCloseWindowBehavior(tmp.closeWindowBehavior);
@@ -2983,13 +3082,18 @@ namespace
       }
       tmp.webdavPasswordConfigured =
           tmp.webdavPasswordConfigured && fs::exists(GetWebDavSecretPath());
+      ApplyThirdPartyNetworkPolicy(tmp);
       return tmp;
     }();
+
+    DeleteThirdPartyNetworkSecrets();
 
     std::wstringstream ss;
     ss << L"{\n";
     ss << L"  \"language\": \"" << EscapeJsonString(cfg.language) << L"\",\n";
     ss << L"  \"languageIndex\": " << cfg.languageIndex << L",\n";
+    ss << L"  \"clientTarget\": \"" << EscapeJsonString(cfg.clientTarget)
+       << L"\",\n";
     ss << L"  \"ideExe\": \"" << EscapeJsonString(cfg.ideExe) << L"\",\n";
     ss << L"  \"theme\": \"" << EscapeJsonString(cfg.theme) << L"\",\n";
     ss << L"  \"tabVisibility\": " << BuildTabVisibilityJson(cfg.tabVisibility)
@@ -3909,13 +4013,16 @@ namespace
     std::wstring cmd = L"\"" + exePath + L"\"";
     std::vector<wchar_t> buffer(cmd.begin(), cmd.end());
     buffer.push_back(L'\0');
+    const fs::path exeFsPath(exePath);
+    const std::wstring workingDir = exeFsPath.parent_path().wstring();
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
     const BOOL ok = CreateProcessW(
         exePath.c_str(), buffer.data(), nullptr, nullptr, FALSE,
-        CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS, nullptr, nullptr, &si, &pi);
+        CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS, nullptr,
+        workingDir.empty() ? nullptr : workingDir.c_str(), &si, &pi);
     if (!ok)
     {
       return false;
@@ -3924,6 +4031,11 @@ namespace
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return true;
+  }
+
+  bool IsCodexExe(const std::wstring &ideExe)
+  {
+    return _wcsicmp(GetFileNameOnly(ideExe).c_str(), L"Codex.exe") == 0;
   }
 
   bool LaunchDetachedCommand(const std::wstring &commandLine)
@@ -3949,6 +4061,8 @@ namespace
 
   std::wstring GetIdeDisplayName(const std::wstring &ideExe)
   {
+    if (_wcsicmp(ideExe.c_str(), L"Codex.exe") == 0)
+      return L"Codex";
     if (_wcsicmp(ideExe.c_str(), L"Trae.exe") == 0)
       return L"Trae";
     if (_wcsicmp(ideExe.c_str(), L"Kiro.exe") == 0)
@@ -3956,6 +4070,20 @@ namespace
     if (_wcsicmp(ideExe.c_str(), L"Antigravity.exe") == 0)
       return L"Antigravity";
     return L"VSCode";
+  }
+
+  std::wstring GetClientTargetDisplayName(const std::wstring &clientTarget)
+  {
+    const std::wstring target = NormalizeClientTarget(clientTarget);
+    if (target == L"vscode")
+      return L"VSCode";
+    if (target == L"trae")
+      return L"Trae";
+    if (target == L"kiro")
+      return L"Kiro";
+    if (target == L"antigravity")
+      return L"Antigravity";
+    return L"Codex";
   }
 
   std::wstring FindConfiguredIdePath(const std::wstring &ideExe)
@@ -3998,16 +4126,25 @@ namespace
     return L"";
   }
 
-  bool RestartConfiguredIde(std::wstring &ideDisplay)
+  bool RestartConfiguredClient(std::wstring &clientDisplay)
   {
     AppConfig cfg;
     LoadConfig(cfg);
-    const std::wstring ideExe = NormalizeIdeExe(cfg.ideExe);
-    ideDisplay = GetIdeDisplayName(ideExe);
+    const std::wstring clientTarget =
+        NormalizeClientTarget(cfg.clientTarget, cfg.ideExe);
+    const std::wstring ideExe = ClientTargetToWindowsExe(clientTarget);
+    clientDisplay = GetClientTargetDisplayName(clientTarget);
     const std::wstring exePath = FindConfiguredIdePath(ideExe);
 
     StopProcessByName(GetFileNameOnly(ideExe));
     Sleep(450);
+
+    if (IsCodexExe(ideExe) &&
+        LaunchDetachedCommand(
+            L"explorer.exe \"shell:AppsFolder\\OpenAI.Codex_2p2nqsd0c76g0!App\""))
+    {
+      return true;
+    }
 
     if (!exePath.empty() && LaunchDetachedExe(exePath))
     {
@@ -4016,6 +4153,11 @@ namespace
 
     // Fallback: let system resolve executable name from PATH / App Paths.
     return LaunchDetachedCommand(L"\"" + ideExe + L"\"");
+  }
+
+  bool RestartConfiguredIde(std::wstring &ideDisplay)
+  {
+    return RestartConfiguredClient(ideDisplay);
   }
 
   bool PickOpenZipPath(HWND hwnd, std::wstring &outPath)
@@ -14016,14 +14158,23 @@ void WebViewHost::ShowHr(HWND hwnd, const wchar_t *where, const HRESULT hr)
   {
     std::wstring message =
         L"Microsoft Edge WebView2 Runtime is required but was not found.\n\n"
-        L"Please install WebView2 Runtime and then restart the application.\n\n"
-        L"Open the official Microsoft download page now?\n\n";
+        L"Please install WebView2 Runtime and then restart the application.\n\n";
+    if (kDisableThirdPartyNetwork)
+    {
+      message += L"Opening third-party download links is disabled for account safety.\n\n";
+    }
+    else
+    {
+      message += L"Open the official Microsoft download page now?\n\n";
+    }
     message += detail;
 
-    const int result =
-        MessageBoxW(hwnd, message.c_str(), L"Missing WebView2 Runtime",
-                    MB_ICONERROR | MB_YESNO | MB_SETFOREGROUND);
-    if (result == IDYES && !OpenExternalUrlByExplorer(kWebView2DownloadUrl))
+    const UINT buttons = kDisableThirdPartyNetwork ? MB_OK : MB_YESNO;
+    const int result = MessageBoxW(hwnd, message.c_str(),
+                                   L"Missing WebView2 Runtime",
+                                   MB_ICONERROR | buttons | MB_SETFOREGROUND);
+    if (!kDisableThirdPartyNetwork && result == IDYES &&
+        !OpenExternalUrlByExplorer(kWebView2DownloadUrl))
     {
       const std::wstring fallback =
           L"Unable to open the download page automatically.\nPlease visit:\n" +
@@ -14108,11 +14259,22 @@ void WebViewHost::SendAppInfo() const
 #endif
   SendWebJson(L"{\"type\":\"app_info\",\"version\":\"" +
               EscapeJsonString(kAppVersion) + L"\",\"debug\":" + debugValue +
-              L",\"repo\":\"https://github.com/isxlan0/Codex_AccountSwitch\"}");
+              L",\"repo\":\"\"}");
 }
 
 void WebViewHost::SendUpdateInfo() const
 {
+  if (kDisableThirdPartyNetwork)
+  {
+    SendWebJson(L"{\"type\":\"update_info\",\"ok\":false,\"current\":\"" +
+                EscapeJsonString(kAppVersion) +
+                L"\",\"latest\":\"\",\"hasUpdate\":false,\"url\":\"\","
+                L"\"downloadUrl\":\"\",\"notes\":\"\","
+                L"\"error\":\"Third-party update checks are disabled\"}");
+    SendWebStatus(L"为避免账号安全泄露，已禁用第三方自动更新接口", L"warning",
+                  L"third_party_network_disabled");
+    return;
+  }
   const HWND targetHwnd = hwnd_;
   std::thread([targetHwnd]()
               {
@@ -14122,10 +14284,8 @@ void WebViewHost::SendUpdateInfo() const
       json =
           L"{\"type\":\"update_info\",\"ok\":false,\"current\":\"" +
           EscapeJsonString(kAppVersion) +
-          L"\",\"latest\":\"\",\"hasUpdate\":false,\"url\":\"https://"
-          L"github.com/isxlan0/Codex_AccountSwitch/releases/"
-          L"latest\",\"downloadUrl\":\"https://github.com/isxlan0/"
-          L"Codex_AccountSwitch/releases/latest\",\"notes\":\"\",\"error\":\"" +
+          L"\",\"latest\":\"\",\"hasUpdate\":false,\"url\":\"\","
+          L"\"downloadUrl\":\"\",\"notes\":\"\",\"error\":\"" +
           EscapeJsonString(check.errorMessage) + L"\"}";
     } else {
       json = L"{\"type\":\"update_info\",\"ok\":true,\"current\":\"" +
@@ -14194,7 +14354,8 @@ void WebViewHost::SendConfig(bool firstRun) const
       L"{\"type\":\"config\",\"firstRun\":" +
       std::wstring(firstRun ? L"true" : L"false") + L",\"language\":\"" +
       EscapeJsonString(cfg.language) + L"\",\"languageIndex\":" +
-      std::to_wstring(cfg.languageIndex) + L",\"ideExe\":\"" +
+      std::to_wstring(cfg.languageIndex) + L",\"clientTarget\":\"" +
+      EscapeJsonString(cfg.clientTarget) + L"\",\"ideExe\":\"" +
       EscapeJsonString(cfg.ideExe) + L"\",\"theme\":\"" +
       EscapeJsonString(cfg.theme) + L"\",\"tabVisibility\":" +
       BuildTabVisibilityJson(cfg.tabVisibility) + L",\"autoUpdate\":" +
@@ -14806,6 +14967,17 @@ void WebViewHost::TriggerRefreshCurrent()
 void WebViewHost::TriggerWebDavSync(const std::wstring &mode,
                                     const bool notifyStatus)
 {
+  if (kDisableThirdPartyNetwork)
+  {
+    if (notifyStatus)
+    {
+      SendWebStatus(L"为避免账号安全泄露，WebDAV 第三方同步入口已禁用", L"warning",
+                    L"third_party_network_disabled");
+    }
+    webDavSyncRunning_.store(false);
+    SendWebDavSyncState();
+    return;
+  }
   if (webDavSyncRunning_.exchange(true))
   {
     if (notifyStatus)
@@ -14887,6 +15059,17 @@ void WebViewHost::TriggerWebDavSync(const std::wstring &mode,
 
 void WebViewHost::TriggerCloudAccountDownload(const bool notifyStatus)
 {
+  if (kDisableThirdPartyNetwork)
+  {
+    if (notifyStatus)
+    {
+      SendWebStatus(L"为避免账号安全泄露，云账号第三方下载入口已禁用", L"warning",
+                    L"third_party_network_disabled");
+    }
+    cloudAccountDownloadRunning_.store(false);
+    SendCloudAccountState();
+    return;
+  }
   if (cloudAccountDownloadRunning_.exchange(true))
   {
     if (notifyStatus)
@@ -15009,8 +15192,10 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
     const std::wstring account = ExtractJsonField(rawMessage, L"account");
     const std::wstring group = ExtractJsonField(rawMessage, L"group");
     const std::wstring language = ExtractJsonField(rawMessage, L"language");
+    const std::wstring clientTarget =
+        ExtractJsonField(rawMessage, L"clientTarget");
     const std::wstring ideExe = ExtractJsonField(rawMessage, L"ideExe");
-    if (!language.empty() || !ideExe.empty())
+    if (!language.empty() || !clientTarget.empty() || !ideExe.empty())
     {
       AppConfig cfg;
       LoadConfig(cfg);
@@ -15018,9 +15203,10 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
       {
         cfg.language = language;
       }
-      if (!ideExe.empty())
+      if (!clientTarget.empty() || !ideExe.empty())
       {
-        cfg.ideExe = NormalizeIdeExe(ideExe);
+        cfg.clientTarget = NormalizeClientTarget(clientTarget, ideExe);
+        cfg.ideExe = ClientTargetToWindowsExe(cfg.clientTarget);
       }
       SaveConfig(cfg);
     }
@@ -15786,13 +15972,15 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
   if (action == L"set_config")
   {
     const std::wstring language = ExtractJsonField(rawMessage, L"language");
+    const std::wstring clientTarget =
+        ExtractJsonField(rawMessage, L"clientTarget");
     const std::wstring ideExe = ExtractJsonField(rawMessage, L"ideExe");
     const std::wstring theme = ExtractJsonField(rawMessage, L"theme");
     std::wstring tabVisibilityJson;
     const bool hasTabVisibility =
         ExtractJsonObjectField(rawMessage, L"tabVisibility", tabVisibilityJson);
     const bool autoUpdate =
-        ExtractJsonBoolField(rawMessage, L"autoUpdate", true);
+        ExtractJsonBoolField(rawMessage, L"autoUpdate", false);
     const bool hasEnableAutoRefreshQuota =
         rawMessage.find(L"\"enableAutoRefreshQuota\"") != std::wstring::npos;
     const bool enableAutoRefreshQuota = hasEnableAutoRefreshQuota
@@ -15940,9 +16128,10 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
     {
       cfg.language = language;
     }
-    if (!ideExe.empty())
+    if (!clientTarget.empty() || !ideExe.empty())
     {
-      cfg.ideExe = NormalizeIdeExe(ideExe);
+      cfg.clientTarget = NormalizeClientTarget(clientTarget, ideExe);
+      cfg.ideExe = ClientTargetToWindowsExe(cfg.clientTarget);
     }
     if (!theme.empty())
     {
@@ -16102,6 +16291,8 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
     {
       cfg.webdavPasswordConfigured = true;
     }
+    ApplyThirdPartyNetworkPolicy(cfg);
+    DeleteThirdPartyNetworkSecrets();
     const bool saved = SaveConfig(cfg);
     if (saved)
     {
@@ -16210,6 +16401,13 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
 
   if (action == L"test_webdav_connection")
   {
+    if (kDisableThirdPartyNetwork)
+    {
+      SendWebStatus(L"为避免账号安全泄露，WebDAV 第三方同步入口已禁用", L"warning",
+                    L"third_party_network_disabled");
+      SendWebDavSyncState();
+      return;
+    }
     AppConfig cfg;
     LoadConfig(cfg);
     cfg.webdavPasswordConfigured = fs::exists(GetWebDavSecretPath());
@@ -16247,6 +16445,13 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
 
   if (action == L"run_webdav_sync")
   {
+    if (kDisableThirdPartyNetwork)
+    {
+      SendWebStatus(L"为避免账号安全泄露，WebDAV 第三方同步入口已禁用", L"warning",
+                    L"third_party_network_disabled");
+      SendWebDavSyncState();
+      return;
+    }
     std::wstring mode = ToLowerCopy(UnescapeJsonString(
         ExtractJsonStringField(rawMessage, L"mode")));
     if (mode != L"upload" && mode != L"download" && mode != L"bidirectional" &&
@@ -16260,12 +16465,27 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
 
   if (action == L"download_latest_cloud_account")
   {
+    if (kDisableThirdPartyNetwork)
+    {
+      SendWebStatus(L"为避免账号安全泄露，云账号第三方下载入口已禁用", L"warning",
+                    L"third_party_network_disabled");
+      SendCloudAccountState();
+      return;
+    }
     TriggerCloudAccountDownload(true);
     return;
   }
 
   if (action == L"resolve_webdav_conflicts")
   {
+    if (kDisableThirdPartyNetwork)
+    {
+      ClearWebDavPendingConflictContext();
+      SendWebStatus(L"为避免账号安全泄露，WebDAV 第三方同步入口已禁用", L"warning",
+                    L"third_party_network_disabled");
+      SendWebDavSyncState();
+      return;
+    }
     const bool cancel =
         ExtractJsonBoolField(rawMessage, L"cancel", false);
     if (cancel)
@@ -16383,6 +16603,12 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
   if (action == L"open_external_url")
   {
     const std::wstring url = ExtractJsonField(rawMessage, L"url");
+    if (kDisableThirdPartyNetwork && !IsOpenAiOfficialExternalUrl(url))
+    {
+      SendWebStatus(L"为避免账号安全泄露，已禁止打开非 OpenAI 官方外部链接", L"warning",
+                    L"third_party_network_disabled");
+      return;
+    }
     if (!OpenExternalUrlByExplorer(url))
     {
       SendWebStatus(L"打开链接失败", L"error", L"open_url_failed");

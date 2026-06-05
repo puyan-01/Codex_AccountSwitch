@@ -1,7 +1,14 @@
 (function () {
   "use strict";
 
-  const IDE_LIST = ["Code.exe", "Trae.exe", "Kiro.exe", "Antigravity.exe"];
+  const CLIENT_TARGETS = [
+    { target: "codex", ideExe: "Codex.exe" },
+    { target: "vscode", ideExe: "Code.exe" },
+    { target: "trae", ideExe: "Trae.exe" },
+    { target: "kiro", ideExe: "Kiro.exe" },
+    { target: "antigravity", ideExe: "Antigravity.exe" }
+  ];
+  const OFFICIAL_OPENAI_ONLY = true;
   const FALLBACK_API_MODELS = [
     "gpt-5.5",
     "gpt-5.2",
@@ -97,7 +104,7 @@
     "settings.webdav_enabled_hint": "Sync account auth backups with other devices through your WebDAV storage.",
     "settings.webdav_warning": "Unless you fully trust the WebDAV provider, syncing may cause data leakage.",
     "settings.webdav_url_label": "WebDAV URL",
-    "settings.webdav_url_hint": "Example: https://dav.example.com/remote.php/dav/files/username",
+    "settings.webdav_url_hint": "Disabled in OpenAI official-only mode.",
     "settings.webdav_remote_path_label": "Remote Folder",
     "settings.webdav_remote_path_hint": "App-only subfolder to store manifest and account files.",
     "settings.webdav_username_label": "Username",
@@ -128,9 +135,9 @@
     "settings.first_run_toast": "Please confirm default settings for first launch",
     "cloud_account.title": "Cloud Accounts",
     "cloud_account.subtitle": "Download cloud auth.json files from third-party links provided by Token-JSON-Provider and keep local duplicates untouched.",
-    "cloud_account.dependency_hint": "This feature depends on Token-JSON-Provider support: https://github.com/isxlan0/Token-JSON-Provider",
+    "cloud_account.dependency_hint": "Disabled in OpenAI official-only mode.",
     "cloud_account.url_label": "Download URL",
-    "cloud_account.url_hint": "Example: http://127.0.0.1:8000",
+    "cloud_account.url_hint": "Disabled in OpenAI official-only mode.",
     "cloud_account.password_label": "Access Password",
     "cloud_account.password_hint": "Saved locally with Windows protection; leave blank to keep the current password.",
     "cloud_account.password_saved": "Password saved",
@@ -510,6 +517,7 @@
     "tray.menu.no_switchable": "No switchable account",
     "tray.quota_format": "5H {q5} | 7D {q7}",
     "tray.quota_na": "--",
+    "ide.Codex.exe": "Codex",
     "ide.Code.exe": "VSCode",
     "ide.Trae.exe": "Trae",
     "ide.Kiro.exe": "Kiro",
@@ -577,7 +585,7 @@
     "settings.webdav_enabled_hint": "通过 WebDAV 云存储在多台设备之间同步账号 auth 备份。",
     "settings.webdav_warning": "除非您十分信任 WebDAV 地址提供商，否则同步可能导致数据泄露。",
     "settings.webdav_url_label": "WebDAV 地址",
-    "settings.webdav_url_hint": "例如：https://dav.example.com/remote.php/dav/files/username",
+    "settings.webdav_url_hint": "仅允许 OpenAI 官方接口模式下已禁用。",
     "settings.webdav_remote_path_label": "远端目录",
     "settings.webdav_remote_path_hint": "应用专用子目录，用于保存清单和账号文件。",
     "settings.webdav_username_label": "用户名",
@@ -691,6 +699,7 @@
     "update.dialog.message": "当前版本: {current}\n最新版本: {latest}\n\n更新内容:\n{notes}\n\n是否立即下载并安装最新版本？",
     "debug.title": "调试工具",
     "debug.notify": "测试：低额度通知",
+    "ide.Codex.exe": "Codex",
     "ide.Code.exe": "VSCode",
     "ide.Trae.exe": "Trae",
     "ide.Kiro.exe": "Kiro",
@@ -729,9 +738,9 @@
     "settings.countdown_prefix": "剩余时间：",
     "cloud_account.title": "云账号",
     "cloud_account.subtitle": "从 Token-JSON-Provider 所提供的第三方链接下载云账号 auth.json，并在命中重复时保留本地版本。",
-    "cloud_account.dependency_hint": "此功能依赖 Token-JSON-Provider 提供支持：https://github.com/isxlan0/Token-JSON-Provider",
+    "cloud_account.dependency_hint": "仅允许 OpenAI 官方接口模式下已禁用。",
     "cloud_account.url_label": "下载链接",
-    "cloud_account.url_hint": "例如：http://127.0.0.1:8000",
+    "cloud_account.url_hint": "仅允许 OpenAI 官方接口模式下已禁用。",
     "cloud_account.password_label": "访问密码",
     "cloud_account.password_hint": "使用 Windows 保护保存在本机；留空则保留当前已保存密码。",
     "cloud_account.password_saved": "密码已保存",
@@ -1386,7 +1395,7 @@
 
   const state = {
     appVersion: "v1.0.0",
-    repoUrl: "https://github.com/isxlan0/Codex_AccountSwitch",
+    repoUrl: "",
     debug: new URLSearchParams(location.search).get("debug") === "1",
     accounts: [],
     filteredAccounts: [],
@@ -1394,8 +1403,9 @@
     confirmAction: null,
     confirmPersistent: false,
     currentLanguage: "zh-CN",
-    currentIdeExe: "Code.exe",
-    autoUpdate: true,
+    currentClientTarget: "codex",
+    currentIdeExe: "Codex.exe",
+    autoUpdate: false,
     enableAutoRefreshQuota: true,
     autoMarkAbnormalAccounts: true,
     autoDeleteAbnormalAccounts: false,
@@ -1651,9 +1661,64 @@
   }
 
   function requestUpdateCheck(context = "manual") {
+    if (OFFICIAL_OPENAI_ONLY) {
+      state.updateCheckContext = context;
+      state.autoUpdate = false;
+      dom.versionText.textContent = t("about.version_prefix", { version: state.appVersion });
+      showToast("为避免账号安全泄露，已禁用第三方自动更新接口", "warning");
+      return;
+    }
     state.updateCheckContext = context;
     dom.versionText.textContent = t("about.version_checking", { version: state.appVersion });
     post("check_update");
+  }
+
+  function applyOfficialOpenAiOnlyState() {
+    if (!OFFICIAL_OPENAI_ONLY) return;
+    state.autoUpdate = false;
+    state.cloudAccountUrl = "";
+    state.cloudAccountPasswordConfigured = false;
+    state.cloudAccountPasswordClear = true;
+    state.cloudAccountAutoDownload = false;
+    state.cloudAccountDownloadRunning = false;
+    state.webdavEnabled = false;
+    state.webdavAutoSync = false;
+    state.webdavUrl = "";
+    state.webdavUsername = "";
+    state.webdavPasswordConfigured = false;
+    state.webdavPasswordClear = true;
+    state.webdavSyncRunning = false;
+  }
+
+  function setElementHidden(el, hidden) {
+    if (!el) return;
+    el.hidden = !!hidden;
+    el.style.display = hidden ? "none" : "";
+  }
+
+  function applyOfficialOpenAiOnlyUi() {
+    if (!OFFICIAL_OPENAI_ONLY) return;
+    setElementHidden(dom.tabBtnCloud, true);
+    setElementHidden(document.getElementById("tab-cloud"), true);
+    setElementHidden(dom.tabBtnAbout, true);
+    setElementHidden(document.getElementById("tab-about"), true);
+    setElementHidden(dom.settingsTabCloudBtn, true);
+    setElementHidden(dom.settingsPaneCloud, true);
+    setElementHidden(dom.checkUpdateBtn, true);
+    setElementHidden(dom.aboutRepoLink?.closest(".about-item"), true);
+    setElementHidden(dom.autoUpdateToggle?.closest(".settings-group"), true);
+    const cloudVisibilityCard = dom.settingsTabVisibilityList
+      ?.querySelector('[data-tab-visibility-card="cloud"]');
+    setElementHidden(cloudVisibilityCard, true);
+    const aboutVisibilityCard = dom.settingsTabVisibilityList
+      ?.querySelector('[data-tab-visibility-card="about"]');
+    setElementHidden(aboutVisibilityCard, true);
+    if (state.currentTab === "cloud" || state.currentTab === "about") {
+      switchTab(getFirstVisibleTab());
+    }
+    if (state.settingsSubTab === "cloud") {
+      switchSettingsSubTab("general");
+    }
   }
 
   function promptUpdateDialog(info) {
@@ -1671,7 +1736,8 @@
       title: t("update.dialog.title"),
       message: normalizeMultilineText(message),
       onConfirm: () => {
-        const target = info?.downloadUrl || info?.url || `${state.repoUrl}/releases/latest`;
+        const target = OFFICIAL_OPENAI_ONLY ? "" : (info?.downloadUrl || info?.url || state.repoUrl || "");
+        if (!target) return;
         post("open_external_url", { url: target });
       }
     });
@@ -1679,6 +1745,7 @@
 
   function getIdeDisplayName(exe) {
     const map = {
+      "codex.exe": "Codex",
       "code.exe": "VSCode",
       "trae.exe": "Trae",
       "kiro.exe": "Kiro",
@@ -1688,9 +1755,29 @@
     return map[key] || String(exe || "VSCode").replace(".exe", "");
   }
 
+  function clientTargetToIdeExe(target) {
+    const item = CLIENT_TARGETS.find((x) => x.target === String(target || "").toLowerCase());
+    return item ? item.ideExe : "Codex.exe";
+  }
+
+  function ideExeToClientTarget(exe) {
+    const item = CLIENT_TARGETS.find((x) => x.ideExe.toLowerCase() === String(exe || "").toLowerCase());
+    return item ? item.target : "codex";
+  }
+
+  function normalizeClientTarget(target, ideExe) {
+    const key = String(target || "").toLowerCase();
+    if (CLIENT_TARGETS.some((x) => x.target === key)) return key;
+    return ideExeToClientTarget(ideExe);
+  }
+
+  function getClientTargetDisplayName(target) {
+    return getIdeDisplayName(clientTargetToIdeExe(target));
+  }
+
   function getDefaultTabVisibility() {
     return TOP_LEVEL_TABS.reduce((acc, tab) => {
-      acc[tab.key] = true;
+      acc[tab.key] = !(OFFICIAL_OPENAI_ONLY && (tab.key === "cloud" || tab.key === "about"));
       return acc;
     }, {});
   }
@@ -1707,12 +1794,19 @@
         normalized[tab.key] = !(source[tab.key] === false || source[tab.key] === "false");
       }
     });
+    if (OFFICIAL_OPENAI_ONLY) {
+      normalized.cloud = false;
+      normalized.about = false;
+    }
     normalized.settings = true;
     return normalized;
   }
 
   function isTabVisible(tabKey) {
     const key = String(tabKey || "");
+    if (OFFICIAL_OPENAI_ONLY && (key === "cloud" || key === "about")) {
+      return false;
+    }
     if (!TOP_LEVEL_TABS.some((tab) => tab.key === key)) {
       return false;
     }
@@ -1765,6 +1859,10 @@
     TOP_LEVEL_TABS.forEach((tab) => {
       const button = dom.settingsTabVisibilityList.querySelector(`[data-tab-visibility-card="${tab.key}"]`);
       if (!button) return;
+      if (OFFICIAL_OPENAI_ONLY && (tab.key === "cloud" || tab.key === "about")) {
+        setElementHidden(button, true);
+        return;
+      }
       const enabled = isTabVisible(tab.key);
       const locked = !tab.hideable;
       button.classList.toggle("active", enabled);
@@ -1829,7 +1927,8 @@
   }
 
   function switchSettingsSubTab(tab) {
-    state.settingsSubTab = (tab === "account" || tab === "cloud") ? tab : "general";
+    const requestedTab = OFFICIAL_OPENAI_ONLY && tab === "cloud" ? "general" : tab;
+    state.settingsSubTab = (requestedTab === "account" || requestedTab === "cloud") ? requestedTab : "general";
     document.querySelectorAll("[data-settings-tab]").forEach((x) => {
       x.classList.toggle("active", x.getAttribute("data-settings-tab") === state.settingsSubTab);
     });
@@ -2134,13 +2233,15 @@
 
   function renderIdeOptions() {
     dom.ideOptions.innerHTML = "";
-    for (const exe of IDE_LIST) {
+    for (const client of CLIENT_TARGETS) {
       const btn = document.createElement("button");
       btn.className = "option-btn";
-      btn.setAttribute("data-ide-option", exe);
-      btn.textContent = t(`ide.${exe}`) || getIdeDisplayName(exe);
+      btn.setAttribute("data-client-target-option", client.target);
+      btn.setAttribute("data-ide-option", client.ideExe);
+      btn.textContent = t(`ide.${client.ideExe}`) || getClientTargetDisplayName(client.target);
       btn.addEventListener("click", () => {
-        state.currentIdeExe = exe;
+        state.currentClientTarget = client.target;
+        state.currentIdeExe = client.ideExe;
         refreshSettingsOptions();
         queueSaveConfig();
       });
@@ -2155,10 +2256,15 @@
     document.querySelectorAll("[data-lang-option]").forEach((x) => {
       x.classList.toggle("active", x.getAttribute("data-lang-option") === state.currentLanguage);
     });
-    document.querySelectorAll("[data-ide-option]").forEach((x) => {
-      x.classList.toggle("active", x.getAttribute("data-ide-option") === state.currentIdeExe);
+    document.querySelectorAll("[data-client-target-option]").forEach((x) => {
+      x.classList.toggle("active", x.getAttribute("data-client-target-option") === state.currentClientTarget);
     });
     dom.autoUpdateToggle.checked = state.autoUpdate;
+    if (OFFICIAL_OPENAI_ONLY) {
+      state.autoUpdate = false;
+      dom.autoUpdateToggle.checked = false;
+      dom.autoUpdateToggle.disabled = true;
+    }
     document.querySelectorAll("[data-close-behavior-option]").forEach((x) => {
       x.classList.toggle("active", x.getAttribute("data-close-behavior-option") === state.closeWindowBehavior);
     });
@@ -2189,6 +2295,7 @@
     renderProxyStatus();
     renderProxyFixedAccountOptions();
     refreshCustomSelects();
+    applyOfficialOpenAiOnlyUi();
     switchSettingsSubTab(state.settingsSubTab);
   }
 
@@ -2222,6 +2329,13 @@
     dom.aboutRepoLabel.textContent = t("about.repo_label");
     dom.aboutRepoLink.textContent = t("about.repo_link");
     dom.checkUpdateBtn.textContent = "\ud83d\ude80 " + t("about.check_update");
+    if (OFFICIAL_OPENAI_ONLY) {
+      dom.checkUpdateBtn.disabled = true;
+      dom.checkUpdateBtn.title = "为避免账号安全泄露，已禁用第三方自动更新接口";
+      dom.aboutRepoLink.removeAttribute("href");
+      dom.aboutRepoLink.setAttribute("aria-disabled", "true");
+      dom.aboutRepoLink.title = "为避免账号安全泄露，已禁用非 OpenAI 官方外链";
+    }
     dom.settingsTitle.textContent = t("settings.title");
     dom.settingsSub.textContent = t("settings.subtitle");
     dom.settingsTabGeneralBtn.textContent = t("settings.tab.general");
@@ -2236,6 +2350,9 @@
     dom.themeDarkBtn.textContent = t("settings.theme_dark");
     dom.settingsAutoUpdateLabel.textContent = t("settings.auto_update_label");
     dom.settingsAutoUpdateHint.textContent = t("settings.auto_update_hint");
+    if (OFFICIAL_OPENAI_ONLY) {
+      dom.settingsAutoUpdateHint.textContent = "为避免账号安全泄露，第三方自动更新接口已禁用。";
+    }
     dom.settingsCloseBehaviorLabel.textContent = t("settings.close_behavior_label");
     dom.settingsCloseBehaviorHint.textContent = t("settings.close_behavior_hint");
     dom.closeBehaviorTrayBtn.textContent = t("settings.close_behavior_tray");
@@ -2286,6 +2403,14 @@
     dom.cloudAccountDependencyHint.textContent = t("cloud_account.dependency_hint");
     dom.cloudAccountUrlLabel.textContent = t("cloud_account.url_label");
     dom.cloudAccountUrlHint.textContent = t("cloud_account.url_hint");
+    if (OFFICIAL_OPENAI_ONLY) {
+      dom.settingsWebDavWarning.textContent = "为避免账号安全泄露，WebDAV 第三方同步已禁用。";
+      dom.settingsWebDavEnabledHint.textContent = "仅允许 OpenAI 官方接口模式下不可开启。";
+      dom.settingsWebDavUrlHint.textContent = "仅允许 OpenAI 官方接口模式下已禁用。";
+      dom.cloudAccountSubtitle.textContent = "为避免账号安全泄露，云账号第三方下载已禁用。";
+      dom.cloudAccountDependencyHint.textContent = "仅允许 OpenAI 官方接口模式下已禁用。";
+      dom.cloudAccountUrlHint.textContent = "仅允许 OpenAI 官方接口模式下已禁用。";
+    }
     dom.cloudAccountPasswordLabel.textContent = t("cloud_account.password_label");
     dom.cloudAccountPasswordHint.textContent = t("cloud_account.password_hint");
     dom.cloudAccountClearPasswordBtn.textContent = t("cloud_account.clear_password");
@@ -2297,6 +2422,7 @@
     dom.webdavConflictDesc.textContent = t("dialog.webdav_conflict.desc");
     dom.webdavConflictCancelBtn.textContent = t("dialog.common.cancel");
     dom.webdavConflictConfirmBtn.textContent = t("dialog.webdav_conflict.apply");
+    applyOfficialOpenAiOnlyUi();
     dom.backupTitle.textContent = t("dialog.backup.title");
     dom.backupNameLabel.textContent = t("dialog.backup.name_label");
     dom.backupNameInput.placeholder = t("dialog.backup.name_placeholder");
@@ -3425,6 +3551,14 @@
 
   function renderWebDavState() {
     if (!dom.webdavEnabledToggle) return;
+    if (OFFICIAL_OPENAI_ONLY) {
+      state.webdavEnabled = false;
+      state.webdavAutoSync = false;
+      state.webdavUrl = "";
+      state.webdavUsername = "";
+      state.webdavPasswordConfigured = false;
+      state.webdavSyncRunning = false;
+    }
     dom.webdavEnabledToggle.checked = !!state.webdavEnabled;
     dom.webdavAutoSyncToggle.checked = !!state.webdavAutoSync;
     syncInputValue(dom.webdavUrlInput, state.webdavUrl || "");
@@ -3435,7 +3569,9 @@
       ? t("settings.webdav_password_saved")
       : t("settings.webdav_password_missing");
     dom.webdavStatusDot.classList.toggle("running", !!state.webdavSyncRunning);
-    const statusText = state.webdavSyncRunning
+    const statusText = OFFICIAL_OPENAI_ONLY
+      ? "为避免账号安全泄露，WebDAV 第三方同步已禁用"
+      : state.webdavSyncRunning
       ? t("settings.webdav_running")
       : (String(state.webdavLastSyncStatus || "").trim() || t("settings.webdav_idle"));
     dom.webdavStatusText.textContent = statusText;
@@ -3450,7 +3586,7 @@
       ? t("settings.webdav_password_saved")
       : t("settings.webdav_password_missing");
     dom.webdavSyncIntervalInput.placeholder = t("settings.webdav_interval_hint");
-    const disableSyncFields = !state.webdavEnabled;
+    const disableSyncFields = OFFICIAL_OPENAI_ONLY || !state.webdavEnabled;
     [dom.webdavUrlInput, dom.webdavRemotePathInput, dom.webdavUsernameInput, dom.webdavPasswordInput,
       dom.webdavAutoSyncToggle, dom.webdavSyncIntervalInput, dom.webdavClearPasswordBtn,
       dom.webdavTestBtn, dom.webdavUploadBtn, dom.webdavDownloadBtn, dom.webdavResetUploadBtn,
@@ -3468,6 +3604,12 @@
 
   function renderCloudAccountState() {
     if (!dom.cloudAccountAutoDownloadToggle) return;
+    if (OFFICIAL_OPENAI_ONLY) {
+      state.cloudAccountUrl = "";
+      state.cloudAccountAutoDownload = false;
+      state.cloudAccountPasswordConfigured = false;
+      state.cloudAccountDownloadRunning = false;
+    }
     dom.cloudAccountAutoDownloadToggle.checked = !!state.cloudAccountAutoDownload;
     syncInputValue(dom.cloudAccountUrlInput, state.cloudAccountUrl || "");
     syncInputValue(dom.cloudAccountIntervalInput, clampWebDavSyncMinutes(state.cloudAccountIntervalMinutes, 60));
@@ -3475,7 +3617,9 @@
       ? t("cloud_account.password_saved")
       : t("cloud_account.password_missing");
     dom.cloudAccountStatusDot.classList.toggle("running", !!state.cloudAccountDownloadRunning);
-    dom.cloudAccountStatusText.textContent = state.cloudAccountDownloadRunning
+    dom.cloudAccountStatusText.textContent = OFFICIAL_OPENAI_ONLY
+      ? "为避免账号安全泄露，云账号第三方下载已禁用"
+      : state.cloudAccountDownloadRunning
       ? getCloudProgressStatusText()
       : (String(state.cloudAccountLastDownloadStatus || "").trim() || t("cloud_account.status_idle"));
     dom.cloudAccountLastDownloadText.textContent = state.cloudAccountLastDownloadAt
@@ -3502,10 +3646,10 @@
       dom.cloudAccountDownloadBtn
     ].forEach((el) => {
       if (!el) return;
-      el.disabled = !!state.cloudAccountDownloadRunning;
+      el.disabled = OFFICIAL_OPENAI_ONLY || !!state.cloudAccountDownloadRunning;
     });
     if (dom.cloudAccountClearPasswordBtn) {
-      dom.cloudAccountClearPasswordBtn.disabled = !state.cloudAccountPasswordConfigured || !!state.cloudAccountDownloadRunning;
+      dom.cloudAccountClearPasswordBtn.disabled = OFFICIAL_OPENAI_ONLY || !state.cloudAccountPasswordConfigured || !!state.cloudAccountDownloadRunning;
     }
   }
 
@@ -3528,7 +3672,7 @@
       language: state.currentLanguage,
       ideExe: state.currentIdeExe,
       tabVisibility: normalizeTabVisibility(state.tabVisibility),
-      autoUpdate: state.autoUpdate,
+      autoUpdate: OFFICIAL_OPENAI_ONLY ? false : state.autoUpdate,
       enableAutoRefreshQuota: state.enableAutoRefreshQuota,
       autoMarkAbnormalAccounts: state.autoMarkAbnormalAccounts,
       autoDeleteAbnormalAccounts: state.autoDeleteAbnormalAccounts,
@@ -3550,19 +3694,19 @@
       proxyDefaultModel: String(state.proxyDefaultModel || ""),
       customModels: Array.isArray(state.customModels) ? state.customModels : [],
       stealthTomlExtra: String(state.stealthTomlExtra || ""),
-      cloudAccountUrl: String(dom.cloudAccountUrlInput?.value || "").trim(),
-      cloudAccountPassword,
-      cloudAccountPasswordClear: !cloudAccountPassword && !!state.cloudAccountPasswordClear,
-      cloudAccountAutoDownload: !!state.cloudAccountAutoDownload,
+      cloudAccountUrl: OFFICIAL_OPENAI_ONLY ? "" : String(dom.cloudAccountUrlInput?.value || "").trim(),
+      cloudAccountPassword: OFFICIAL_OPENAI_ONLY ? "" : cloudAccountPassword,
+      cloudAccountPasswordClear: OFFICIAL_OPENAI_ONLY ? true : (!cloudAccountPassword && !!state.cloudAccountPasswordClear),
+      cloudAccountAutoDownload: OFFICIAL_OPENAI_ONLY ? false : !!state.cloudAccountAutoDownload,
       cloudAccountIntervalMinutes: clampWebDavSyncMinutes(state.cloudAccountIntervalMinutes, 60),
-      webdavEnabled: !!state.webdavEnabled,
-      webdavAutoSync: !!state.webdavAutoSync,
+      webdavEnabled: OFFICIAL_OPENAI_ONLY ? false : !!state.webdavEnabled,
+      webdavAutoSync: OFFICIAL_OPENAI_ONLY ? false : !!state.webdavAutoSync,
       webdavSyncIntervalMinutes: clampWebDavSyncMinutes(state.webdavSyncIntervalMinutes, 15),
-      webdavUrl: String(dom.webdavUrlInput?.value || "").trim(),
+      webdavUrl: OFFICIAL_OPENAI_ONLY ? "" : String(dom.webdavUrlInput?.value || "").trim(),
       webdavRemotePath: String(dom.webdavRemotePathInput?.value || "/CodexAccountSwitch").trim(),
-      webdavUsername: String(dom.webdavUsernameInput?.value || "").trim(),
-      webdavPassword,
-      webdavPasswordClear: !webdavPassword && !!state.webdavPasswordClear
+      webdavUsername: OFFICIAL_OPENAI_ONLY ? "" : String(dom.webdavUsernameInput?.value || "").trim(),
+      webdavPassword: OFFICIAL_OPENAI_ONLY ? "" : webdavPassword,
+      webdavPasswordClear: OFFICIAL_OPENAI_ONLY ? true : (!webdavPassword && !!state.webdavPasswordClear)
     };
   }
 
@@ -3581,7 +3725,7 @@
     const msgTabVisibility = normalizeTabVisibility(msg.tabVisibility);
     const pendingTabVisibility = normalizeTabVisibility(pending.tabVisibility);
     const msgLanguage = msg.language || "zh-CN";
-    const msgIdeExe = msg.ideExe || "Code.exe";
+    const msgIdeExe = msg.ideExe || "Codex.exe";
     const msgAutoUpdate = msg.autoUpdate !== false && msg.autoUpdate !== "false";
     const msgEnableAutoRefreshQuota = parseEnableAutoRefreshQuota(msg, true);
     const msgAutoMarkAbnormalAccounts = msg.autoMarkAbnormalAccounts !== false && msg.autoMarkAbnormalAccounts !== "false";
@@ -3610,6 +3754,12 @@
     const msgWebdavRemotePath = String(msg.webdavRemotePath || "/CodexAccountSwitch").trim();
     const msgWebdavUsername = String(msg.webdavUsername || "").trim();
     const msgWebdavPasswordConfigured = msg.webdavPasswordConfigured === true || msg.webdavPasswordConfigured === "true";
+    const expectedCloudPasswordConfigured = OFFICIAL_OPENAI_ONLY
+      ? false
+      : (String(pending.cloudAccountPassword || "").trim() ? true : (!!state.cloudAccountPasswordConfigured && !pending.cloudAccountPasswordClear));
+    const expectedWebdavPasswordConfigured = OFFICIAL_OPENAI_ONLY
+      ? false
+      : (String(pending.webdavPassword || "").trim() ? true : (!!state.webdavPasswordConfigured && !pending.webdavPasswordClear));
     return msgLanguage === pending.language
       && msgIdeExe === pending.ideExe
       && TOP_LEVEL_TABS.every((tab) => msgTabVisibility[tab.key] === pendingTabVisibility[tab.key])
@@ -3633,14 +3783,14 @@
       && msgCloudAccountUrl === String(pending.cloudAccountUrl || "").trim()
       && msgCloudAccountAutoDownload === !!pending.cloudAccountAutoDownload
       && msgCloudAccountIntervalMinutes === clampWebDavSyncMinutes(pending.cloudAccountIntervalMinutes, 60)
-      && msgCloudAccountPasswordConfigured === (String(pending.cloudAccountPassword || "").trim() ? true : (!!state.cloudAccountPasswordConfigured && !pending.cloudAccountPasswordClear))
+      && msgCloudAccountPasswordConfigured === expectedCloudPasswordConfigured
       && msgWebdavEnabled === !!pending.webdavEnabled
       && msgWebdavAutoSync === !!pending.webdavAutoSync
       && msgWebdavSyncIntervalMinutes === clampWebDavSyncMinutes(pending.webdavSyncIntervalMinutes, 15)
       && msgWebdavUrl === String(pending.webdavUrl || "").trim()
       && msgWebdavRemotePath === String(pending.webdavRemotePath || "/CodexAccountSwitch").trim()
       && msgWebdavUsername === String(pending.webdavUsername || "").trim()
-      && msgWebdavPasswordConfigured === (String(pending.webdavPassword || "").trim() ? true : (!!state.webdavPasswordConfigured && !pending.webdavPasswordClear));
+      && msgWebdavPasswordConfigured === expectedWebdavPasswordConfigured;
   }
 
   function saveConfigNow() {
@@ -4066,6 +4216,7 @@
       queueSaveConfig();
     });
     dom.cloudAccountClearPasswordBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
       state.cloudAccountPasswordClear = true;
       dom.cloudAccountPasswordInput.value = "";
       state.cloudAccountPasswordConfigured = false;
@@ -4073,11 +4224,17 @@
       queueSaveConfig();
     });
     dom.cloudAccountAutoDownloadToggle.addEventListener("change", () => {
+      if (OFFICIAL_OPENAI_ONLY) {
+        state.cloudAccountAutoDownload = false;
+        renderCloudAccountState();
+        return;
+      }
       state.cloudAccountAutoDownload = dom.cloudAccountAutoDownloadToggle.checked;
       renderCloudAccountState();
       queueSaveConfig();
     });
     const handleCloudAccountMinutesChanged = () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
       state.cloudAccountIntervalMinutes = clampWebDavSyncMinutes(dom.cloudAccountIntervalInput.value, state.cloudAccountIntervalMinutes || 60);
       renderCloudAccountState();
       queueSaveConfig();
@@ -4085,6 +4242,7 @@
     dom.cloudAccountIntervalInput.addEventListener("input", handleCloudAccountMinutesChanged);
     dom.cloudAccountIntervalInput.addEventListener("change", handleCloudAccountMinutesChanged);
     dom.cloudAccountDownloadBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
       if (state.cloudAccountDownloadRunning) return;
       state.cloudAccountDownloadRunning = true;
       state.cloudAccountProgressCurrent = 0;
@@ -4101,16 +4259,27 @@
       post("download_latest_cloud_account");
     });
     dom.webdavEnabledToggle.addEventListener("change", () => {
+      if (OFFICIAL_OPENAI_ONLY) {
+        state.webdavEnabled = false;
+        refreshSettingsOptions();
+        return;
+      }
       state.webdavEnabled = dom.webdavEnabledToggle.checked;
       refreshSettingsOptions();
       queueSaveConfig();
     });
     dom.webdavAutoSyncToggle.addEventListener("change", () => {
+      if (OFFICIAL_OPENAI_ONLY) {
+        state.webdavAutoSync = false;
+        refreshSettingsOptions();
+        return;
+      }
       state.webdavAutoSync = dom.webdavAutoSyncToggle.checked;
       refreshSettingsOptions();
       queueSaveConfig();
     });
     const handleWebDavMinutesChanged = () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
       state.webdavSyncIntervalMinutes = clampWebDavSyncMinutes(dom.webdavSyncIntervalInput.value, state.webdavSyncIntervalMinutes || 15);
       refreshSettingsOptions();
       queueSaveConfig();
@@ -4132,11 +4301,26 @@
       renderWebDavState();
       queueSaveConfig();
     });
-    dom.webdavTestBtn.addEventListener("click", () => post("test_webdav_connection"));
-    dom.webdavUploadBtn.addEventListener("click", () => post("run_webdav_sync", { mode: "upload" }));
-    dom.webdavDownloadBtn.addEventListener("click", () => post("run_webdav_sync", { mode: "download" }));
-    dom.webdavResetUploadBtn.addEventListener("click", () => post("run_webdav_sync", { mode: "reset_upload" }));
-    dom.webdavSyncBtn.addEventListener("click", () => post("run_webdav_sync", { mode: "bidirectional" }));
+    dom.webdavTestBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
+      post("test_webdav_connection");
+    });
+    dom.webdavUploadBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
+      post("run_webdav_sync", { mode: "upload" });
+    });
+    dom.webdavDownloadBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
+      post("run_webdav_sync", { mode: "download" });
+    });
+    dom.webdavResetUploadBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
+      post("run_webdav_sync", { mode: "reset_upload" });
+    });
+    dom.webdavSyncBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) return;
+      post("run_webdav_sync", { mode: "bidirectional" });
+    });
     dom.webdavConflictList.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-webdav-choice]");
       if (!btn) return;
@@ -4294,6 +4478,12 @@
     });
 
     dom.autoUpdateToggle.addEventListener("change", () => {
+      if (OFFICIAL_OPENAI_ONLY) {
+        state.autoUpdate = false;
+        dom.autoUpdateToggle.checked = false;
+        refreshSettingsOptions();
+        return;
+      }
       state.autoUpdate = dom.autoUpdateToggle.checked;
       refreshSettingsOptions();
       queueSaveConfig();
@@ -4552,10 +4742,21 @@
         }
       });
     });
-    dom.checkUpdateBtn.addEventListener("click", () => requestUpdateCheck("manual"));
+    dom.checkUpdateBtn.addEventListener("click", () => {
+      if (OFFICIAL_OPENAI_ONLY) {
+        requestUpdateCheck("manual");
+        return;
+      }
+      requestUpdateCheck("manual");
+    });
     dom.aboutRepoLink.addEventListener("click", (e) => {
       e.preventDefault();
-      const url = state.repoUrl || "https://github.com/isxlan0/Codex_AccountSwitch";
+      if (OFFICIAL_OPENAI_ONLY) {
+        showToast("为避免账号安全泄露，已禁用非 OpenAI 官方外链", "warning");
+        return;
+      }
+      const url = state.repoUrl || "";
+      if (!url) return;
       post("open_external_url", { url });
     });
 
@@ -4970,7 +5171,7 @@
           if (typeof msg.languageIndex === "number" && state.languageIndex[msg.languageIndex]) {
             state.currentLanguage = state.languageIndex[msg.languageIndex].code;
           }
-          state.currentIdeExe = msg.ideExe || "Code.exe";
+          state.currentIdeExe = msg.ideExe || "Codex.exe";
           state.autoUpdate = msg.autoUpdate !== false && msg.autoUpdate !== "false";
           state.enableAutoRefreshQuota = parseEnableAutoRefreshQuota(msg, true);
           state.autoMarkAbnormalAccounts = msg.autoMarkAbnormalAccounts !== false && msg.autoMarkAbnormalAccounts !== "false";
@@ -5016,6 +5217,7 @@
           if (Number.isFinite(Number(msg.proxyTimeoutSec))) dom.proxyTimeoutInput.value = String(Number(msg.proxyTimeoutSec));
           if (document.documentElement.getAttribute("data-theme") !== resolveEffectiveTheme()) applyTheme();
           state.firstRun = msg.firstRun === true || msg.firstRun === "true";
+          applyOfficialOpenAiOnlyState();
           renderTopLevelTabs();
           post("get_languages", { code: state.currentLanguage });
           if (state.autoUpdate && !state.didAutoCheckUpdate) {
@@ -5039,7 +5241,7 @@
             clearPendingConfigState();
           }
           state.currentLanguage = msg.language || state.currentLanguage || "zh-CN";
-          state.currentIdeExe = msg.ideExe || state.currentIdeExe || "Code.exe";
+          state.currentIdeExe = msg.ideExe || state.currentIdeExe || "Codex.exe";
           state.autoUpdate = msg.autoUpdate !== false && msg.autoUpdate !== "false";
           state.enableAutoRefreshQuota = parseEnableAutoRefreshQuota(msg, state.enableAutoRefreshQuota);
           state.autoMarkAbnormalAccounts = msg.autoMarkAbnormalAccounts !== false && msg.autoMarkAbnormalAccounts !== "false";
@@ -5082,6 +5284,7 @@
           if (Number.isFinite(Number(msg.proxyPort))) dom.proxyPortInput.value = String(Number(msg.proxyPort));
           if (Number.isFinite(Number(msg.proxyTimeoutSec))) dom.proxyTimeoutInput.value = String(Number(msg.proxyTimeoutSec));
           if (document.documentElement.getAttribute("data-theme") !== resolveEffectiveTheme()) applyTheme();
+          applyOfficialOpenAiOnlyState();
           renderTopLevelTabs();
           if (!isTabVisible(state.currentTab)) {
             switchTab(state.currentTab || "dashboard");

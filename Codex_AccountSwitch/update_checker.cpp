@@ -15,6 +15,7 @@ namespace
 {
 namespace fs = std::filesystem;
 
+constexpr bool kDisableThirdPartyNetwork = true;
 constexpr wchar_t kHost[] = L"api.github.com";
 constexpr wchar_t kReleasePath[] = L"/repos/isxlan0/Codex_AccountSwitch/releases/latest";
 constexpr wchar_t kTagsPath[] = L"/repos/isxlan0/Codex_AccountSwitch/tags?per_page=1";
@@ -524,6 +525,14 @@ UpdateCheckResult CheckGitHubUpdate(const std::wstring& currentVersion)
     UpdateCheckResult result;
     result.currentVersion = currentVersion;
     result.releaseUrl = kReleaseUrl;
+    if (kDisableThirdPartyNetwork)
+    {
+        result.ok = false;
+        result.releaseUrl.clear();
+        result.downloadUrl.clear();
+        result.errorMessage = L"Third-party update checks are disabled";
+        return result;
+    }
 
     std::wstring body;
     std::wstring latest;
