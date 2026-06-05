@@ -3030,7 +3030,7 @@
     const key = `status_code.${code}`;
     if (state.i18n[key]) {
       if (code === "restart_failed") {
-        return t(key, { ide: getIdeDisplayName(state.currentIdeExe) });
+        return t(key, { ide: getClientTargetDisplayName(state.currentClientTarget) });
       }
       if ([
         "import_auth_batch_done",
@@ -3670,6 +3670,7 @@
     const webdavPassword = String(dom.webdavPasswordInput?.value || "").trim();
     return {
       language: state.currentLanguage,
+      clientTarget: state.currentClientTarget,
       ideExe: state.currentIdeExe,
       tabVisibility: normalizeTabVisibility(state.tabVisibility),
       autoUpdate: OFFICIAL_OPENAI_ONLY ? false : state.autoUpdate,
@@ -3725,7 +3726,8 @@
     const msgTabVisibility = normalizeTabVisibility(msg.tabVisibility);
     const pendingTabVisibility = normalizeTabVisibility(pending.tabVisibility);
     const msgLanguage = msg.language || "zh-CN";
-    const msgIdeExe = msg.ideExe || "Codex.exe";
+    const msgClientTarget = normalizeClientTarget(msg.clientTarget, msg.ideExe);
+    const msgIdeExe = msg.ideExe || clientTargetToIdeExe(msgClientTarget);
     const msgAutoUpdate = msg.autoUpdate !== false && msg.autoUpdate !== "false";
     const msgEnableAutoRefreshQuota = parseEnableAutoRefreshQuota(msg, true);
     const msgAutoMarkAbnormalAccounts = msg.autoMarkAbnormalAccounts !== false && msg.autoMarkAbnormalAccounts !== "false";
@@ -3761,6 +3763,7 @@
       ? false
       : (String(pending.webdavPassword || "").trim() ? true : (!!state.webdavPasswordConfigured && !pending.webdavPasswordClear));
     return msgLanguage === pending.language
+      && msgClientTarget === normalizeClientTarget(pending.clientTarget, pending.ideExe)
       && msgIdeExe === pending.ideExe
       && TOP_LEVEL_TABS.every((tab) => msgTabVisibility[tab.key] === pendingTabVisibility[tab.key])
       && msgAutoUpdate === pending.autoUpdate
@@ -4420,7 +4423,7 @@
       const group = target.getAttribute("data-group") || "personal";
       if (!name) return;
       if (action === "switch") {
-        const ide = getIdeDisplayName(state.currentIdeExe);
+        const ide = getClientTargetDisplayName(state.currentClientTarget);
         const message = state.proxyStealthMode
           ? t("confirm.switch_proxy_mode", { name, ide })
           : t("confirm.switch_restart_ide", { name, ide });
@@ -4432,6 +4435,7 @@
               account: name,
               group,
               language: state.currentLanguage,
+              clientTarget: state.currentClientTarget,
               ideExe: state.currentIdeExe
             });
           }
@@ -5171,7 +5175,8 @@
           if (typeof msg.languageIndex === "number" && state.languageIndex[msg.languageIndex]) {
             state.currentLanguage = state.languageIndex[msg.languageIndex].code;
           }
-          state.currentIdeExe = msg.ideExe || "Codex.exe";
+          state.currentClientTarget = normalizeClientTarget(msg.clientTarget, msg.ideExe);
+          state.currentIdeExe = msg.ideExe || clientTargetToIdeExe(state.currentClientTarget);
           state.autoUpdate = msg.autoUpdate !== false && msg.autoUpdate !== "false";
           state.enableAutoRefreshQuota = parseEnableAutoRefreshQuota(msg, true);
           state.autoMarkAbnormalAccounts = msg.autoMarkAbnormalAccounts !== false && msg.autoMarkAbnormalAccounts !== "false";
@@ -5241,7 +5246,11 @@
             clearPendingConfigState();
           }
           state.currentLanguage = msg.language || state.currentLanguage || "zh-CN";
-          state.currentIdeExe = msg.ideExe || state.currentIdeExe || "Codex.exe";
+          state.currentClientTarget = normalizeClientTarget(
+            msg.clientTarget,
+            msg.ideExe || state.currentIdeExe
+          );
+          state.currentIdeExe = msg.ideExe || clientTargetToIdeExe(state.currentClientTarget);
           state.autoUpdate = msg.autoUpdate !== false && msg.autoUpdate !== "false";
           state.enableAutoRefreshQuota = parseEnableAutoRefreshQuota(msg, state.enableAutoRefreshQuota);
           state.autoMarkAbnormalAccounts = msg.autoMarkAbnormalAccounts !== false && msg.autoMarkAbnormalAccounts !== "false";

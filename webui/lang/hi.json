@@ -494,6 +494,7 @@
   "tray.menu.no_switchable": "कोई स्विच करने योग्य खाता नहीं",
   "tray.quota_format": "5H {q5} | 7D {q7}",
   "tray.quota_na": "--",
+  "ide.Codex.exe": "Codex",
   "ide.Code.exe": "वीएसकोड",
   "ide.Trae.exe": "ट्रे",
   "ide.Kiro.exe": "कीरो",

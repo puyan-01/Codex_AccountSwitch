@@ -494,6 +494,7 @@
   "tray.menu.no_switchable": "No hay cuenta disponible",
   "tray.quota_format": "5h {q5} | 7d {q7}",
   "tray.quota_na": "N/D",
+  "ide.Codex.exe": "Codex",
   "ide.Code.exe": "VSCode Editor",
   "ide.Trae.exe": "Trae Editor",
   "ide.Kiro.exe": "Kiro Editor",

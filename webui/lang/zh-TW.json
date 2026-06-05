@@ -172,6 +172,7 @@
   "update.dialog.message": "當前版本: {current}\n最新版本: {latest}\n\n更新內容:\n{notes}\n\n是否立即下載並安裝最新版本？",
   "debug.title": "調試工具",
   "debug.notify": "測試：低額度通知",
+  "ide.Codex.exe": "Codex 應用",
   "ide.Code.exe": "VS Code 編輯器",
   "ide.Trae.exe": "Trae 編輯器",
   "ide.Kiro.exe": "Kiro 編輯器",

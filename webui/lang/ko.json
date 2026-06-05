@@ -494,6 +494,7 @@
   "tray.menu.no_switchable": "전환 가능한 계정 없음",
   "tray.quota_format": "5H {q5} | 7D {q7}",
   "tray.quota_na": "--",
+  "ide.Codex.exe": "Codex",
   "ide.Code.exe": "VSCode 편집기",
   "ide.Trae.exe": "Trae 편집기",
   "ide.Kiro.exe": "Kiro 편집기",

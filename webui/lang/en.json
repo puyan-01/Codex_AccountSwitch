@@ -494,6 +494,7 @@
   "tray.menu.no_switchable": "No switchable account",
   "tray.quota_format": "5H {q5} | 7D {q7}",
   "tray.quota_na": "--",
+  "ide.Codex.exe": "Codex",
   "ide.Code.exe": "VSCode",
   "ide.Trae.exe": "Trae",
   "ide.Kiro.exe": "Kiro",

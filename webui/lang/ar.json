@@ -494,6 +494,7 @@
   "tray.menu.no_switchable": "لا يوجد حساب للتبديل",
   "tray.quota_format": "5H {q5} | 7D {q7}",
   "tray.quota_na": "--",
+  "ide.Codex.exe": "Codex",
   "ide.Code.exe": "في اس كود",
   "ide.Trae.exe": "تراي",
   "ide.Kiro.exe": "كيرو",
