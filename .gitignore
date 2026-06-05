@@ -5,6 +5,8 @@
 /data/
 /packages/
 /x64/
+/electron/node_modules/
+/electron/dist/
 /Codex_AccountSwitch/x64/
 /.claude/
 /.playwright-mcp/

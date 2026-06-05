@@ -1524,11 +1524,15 @@
   }
 
   function post(action, payload = {}) {
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage({ action, ...payload });
+    const message = { action, ...payload };
+    if (window.codexHost && typeof window.codexHost.postMessage === "function") {
+      window.codexHost.postMessage(message);
+      log(`command sent: ${action}`);
+    } else if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.postMessage(message);
       log(`command sent: ${action}`);
     } else {
-      log(`not running in WebView2: ${action}`);
+      log(`not running in host shell: ${action}`);
     }
   }
 
@@ -4809,9 +4813,12 @@
   }
 
   function bindWebViewMessages() {
-    if (!(window.chrome && window.chrome.webview)) return;
+    const hostEvents = (window.codexHost && typeof window.codexHost.addEventListener === "function")
+      ? window.codexHost
+      : ((window.chrome && window.chrome.webview) ? window.chrome.webview : null);
+    if (!hostEvents) return;
 
-    window.chrome.webview.addEventListener("message", async (event) => {
+    hostEvents.addEventListener("message", async (event) => {
       const msg = event.data;
       if (msg && typeof msg === "object" && msg.type === "accounts_list") {
         state.accounts = Array.isArray(msg.accounts)
