@@ -278,47 +278,13 @@ function createHost({ app, send, openExternal }) {
     send(strings ? { type: "language_pack", ok: true, code: requested, strings } : { type: "language_pack", ok: false });
   }
 
-  async function backupCurrent(name) {
-    const safeName = sanitizeAccountName(name);
-    if (!safeName || safeName.length > 32) {
-      send({ type: "status", level: "error", code: "invalid_name", message: "保存失败：账号名无效或超过 32 个字符" });
-      return;
-    }
-    if (!(await fileExists(codexAuthPath))) {
-      send({ type: "status", level: "error", code: "auth_missing", message: "保存失败：当前账号文件不存在" });
-      return;
-    }
-    const index = await ensureIndex(dataRoot);
-    if (index.accounts.some((item) => String(item.name || "").toLowerCase() === safeName.toLowerCase())) {
-      send({ type: "status", level: "warning", code: "duplicate_name", message: "名字重复，请修改后再保存" });
-      return;
-    }
-    const group = "personal";
-    const authPath = path.join(dataRoot, makeRelativeAuthPath(group, safeName));
-    await fsp.mkdir(path.dirname(authPath), { recursive: true });
-    await fsp.copyFile(codexAuthPath, authPath);
-    index.current = { name: safeName, group };
-    index.accounts.push({
-      name: safeName,
-      group,
-      path: makeRelativeAuthPath(group, safeName).replaceAll(path.sep, "/"),
-      updatedAt: nowText(),
-      abnormal: false,
-      abnormalReason: "",
-      abnormalAt: "",
-      usageOk: false,
-      planType: "",
-      email: "",
-      quota5hRemainingPercent: -1,
-      quota7dRemainingPercent: -1,
-      quota5hResetAfterSeconds: -1,
-      quota7dResetAfterSeconds: -1,
-      quota5hResetAt: -1,
-      quota7dResetAt: -1
-    });
-    await writeJson(path.join(dataRoot, "backups", "index.json"), index);
-    send({ type: "status", level: "success", code: "backup_saved", message: `保存成功：[${group}] ${safeName}` });
-    await sendAccountsList();
+  async function rejectAccountBackup() {
+    send({ type: "status", level: "warning", code: "account_backup_disabled", message: "当前版本已禁用账号备份功能" });
+  }
+
+  async function rejectCloudAccountSync() {
+    send({ type: "status", level: "warning", code: "cloud_account_sync_disabled", message: "当前版本不支持云账户同步功能" });
+    send({ type: "cloud_account_status", autoDownload: false, intervalMinutes: 60, remainingSec: 0, running: false, passwordConfigured: false });
   }
 
   async function switchAccount(account, group, payload) {
@@ -384,14 +350,14 @@ function createHost({ app, send, openExternal }) {
       if (action === "get_languages") return sendLanguageIndex(message.code);
       if (action === "get_language_pack") return sendLanguagePack(message.code);
       if (action === "list_accounts" || action === "refresh_accounts" || action === "refresh_accounts_batch" || action === "refresh_account") return sendAccountsList();
-      if (action === "backup_current") return backupCurrent(message.name);
-      if (action === "backup_current_auto") return backupCurrent(`Codex ${nowText().replace(/[/:]/g, "-")}`);
+      if (action === "backup_current" || action === "backup_current_auto") return rejectAccountBackup();
       if (action === "switch_account") return switchAccount(message.account, message.group, message);
       if (action === "open_external_url" && message.url) return openExternal(String(message.url));
       if (action === "get_proxy_status") return send({ type: "proxy_status", running: false, port: 1455, timeoutSec: 600, allowLan: false, apiKey: "", dispatchMode: "round_robin", fixedAccount: "", fixedGroup: "personal" });
       if (action === "get_traffic_logs") return send({ type: "traffic_logs", items: [] });
       if (action === "get_token_stats") return send({ type: "token_stats", inputTokens: 0, outputTokens: 0, totalTokens: 0, activeAccount: "", models: [], accounts: [], trend: {} });
       if (action === "get_api_models") return send({ type: "api_models", models: [] });
+      if (action === "download_latest_cloud_account") return rejectCloudAccountSync();
       if (action === "check_update") return send({ type: "update_info", ok: false, current: APP_VERSION, latest: "", hasUpdate: false, url: "", downloadUrl: "", notes: "", error: "Electron shell does not check updates yet" });
       send({ type: "status", level: "warning", code: "electron_action_unsupported", message: "Electron 版暂未支持该功能" });
     } catch (error) {

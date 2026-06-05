@@ -15227,56 +15227,15 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
 
   if (action == L"backup_current")
   {
-    const std::wstring name = ExtractJsonField(rawMessage, L"name");
-    AppConfig cfg;
-    LoadConfig(cfg);
-    const bool queryUsage = cfg.enableAutoRefreshQuota;
-    std::wstring status;
-    std::wstring code;
-    const bool ok = BackupCurrentAccount(name, status, code, queryUsage);
-    const std::wstring level =
-        (code == L"duplicate_name") ? L"warning" : (ok ? L"success" : L"error");
-    SendWebStatus(status, level, code);
-    if (ok)
-    {
-      const HWND targetHwnd = hwnd_;
-      std::thread([targetHwnd, name, queryUsage]()
-                  {
-        PostAsyncWebJson(targetHwnd,
-                         BuildAccountsListJson(queryUsage, name, L""));
-        PostAsyncWebJson(targetHwnd,
-                         L"{\"type\":\"status\",\"level\":\"success\",\"code\":"
-                         L"\"account_quota_refreshed\",\"message\":\"\"}"); })
-          .detach();
-    }
+    SendWebStatus(L"当前版本已禁用账号备份功能", L"warning",
+                  L"account_backup_disabled");
     return;
   }
 
   if (action == L"backup_current_auto")
   {
-    AppConfig cfg;
-    LoadConfig(cfg);
-    const bool queryUsage = cfg.enableAutoRefreshQuota;
-    std::wstring savedName;
-    std::wstring status;
-    std::wstring code;
-    const bool ok = BackupCurrentAccountAuto(savedName, status, code, queryUsage);
-    const std::wstring level =
-        (code == L"duplicate_name") ? L"warning" : (ok ? L"success" : L"error");
-    SendWebStatus(status, level, code);
-    if (ok)
-    {
-      const HWND targetHwnd = hwnd_;
-      const std::wstring targetName = savedName;
-      std::thread([targetHwnd, targetName, queryUsage]()
-                  {
-        PostAsyncWebJson(targetHwnd,
-                         BuildAccountsListJson(queryUsage, targetName, L""));
-        PostAsyncWebJson(targetHwnd,
-                         L"{\"type\":\"status\",\"level\":\"success\",\"code\":"
-                         L"\"account_quota_refreshed\",\"message\":\"\"}"); })
-          .detach();
-    }
+    SendWebStatus(L"当前版本已禁用账号备份功能", L"warning",
+                  L"account_backup_disabled");
     return;
   }
 
@@ -16465,14 +16424,9 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
 
   if (action == L"download_latest_cloud_account")
   {
-    if (kDisableThirdPartyNetwork)
-    {
-      SendWebStatus(L"为避免账号安全泄露，云账号第三方下载入口已禁用", L"warning",
-                    L"third_party_network_disabled");
-      SendCloudAccountState();
-      return;
-    }
-    TriggerCloudAccountDownload(true);
+    SendWebStatus(L"当前版本不支持云账户同步功能", L"warning",
+                  L"cloud_account_sync_disabled");
+    SendCloudAccountState();
     return;
   }
 
