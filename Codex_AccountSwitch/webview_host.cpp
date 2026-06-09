@@ -15234,8 +15234,29 @@ void WebViewHost::HandleWebAction(HWND hwnd, const std::wstring &action,
 
   if (action == L"backup_current_auto")
   {
-    SendWebStatus(L"当前版本已禁用账号备份功能", L"warning",
-                  L"account_backup_disabled");
+    AppConfig cfg;
+    LoadConfig(cfg);
+    const bool queryUsage = cfg.enableAutoRefreshQuota;
+    std::wstring savedName;
+    std::wstring status;
+    std::wstring code;
+    const bool ok = BackupCurrentAccountAuto(savedName, status, code, queryUsage);
+    const std::wstring level =
+        (code == L"duplicate_name") ? L"warning" : (ok ? L"success" : L"error");
+    SendWebStatus(status, level, code);
+    if (ok)
+    {
+      const HWND targetHwnd = hwnd_;
+      const std::wstring targetName = savedName;
+      std::thread([targetHwnd, targetName, queryUsage]()
+                  {
+        PostAsyncWebJson(targetHwnd,
+                         BuildAccountsListJson(queryUsage, targetName, L""));
+        PostAsyncWebJson(targetHwnd,
+                         L"{\"type\":\"status\",\"level\":\"success\",\"code\":"
+                         L"\"account_quota_refreshed\",\"message\":\"\"}"); })
+          .detach();
+    }
     return;
   }
 

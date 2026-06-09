@@ -282,6 +282,49 @@ function createHost({ app, send, openExternal }) {
     send({ type: "status", level: "warning", code: "account_backup_disabled", message: "当前版本已禁用账号备份功能" });
   }
 
+  async function backupCurrent(name) {
+    const safeName = sanitizeAccountName(name);
+    if (!safeName || safeName.length > 32) {
+      send({ type: "status", level: "error", code: "invalid_name", message: "保存失败：账号名无效或超过 32 个字符" });
+      return;
+    }
+    if (!(await fileExists(codexAuthPath))) {
+      send({ type: "status", level: "error", code: "auth_missing", message: "保存失败：当前账号文件不存在" });
+      return;
+    }
+    const index = await ensureIndex(dataRoot);
+    if (index.accounts.some((item) => String(item.name || "").toLowerCase() === safeName.toLowerCase())) {
+      send({ type: "status", level: "warning", code: "duplicate_name", message: "名字重复，请修改后再保存" });
+      return;
+    }
+    const group = "personal";
+    const authPath = path.join(dataRoot, makeRelativeAuthPath(group, safeName));
+    await fsp.mkdir(path.dirname(authPath), { recursive: true });
+    await fsp.copyFile(codexAuthPath, authPath);
+    index.current = { name: safeName, group };
+    index.accounts.push({
+      name: safeName,
+      group,
+      path: makeRelativeAuthPath(group, safeName).replaceAll(path.sep, "/"),
+      updatedAt: nowText(),
+      abnormal: false,
+      abnormalReason: "",
+      abnormalAt: "",
+      usageOk: false,
+      planType: "",
+      email: "",
+      quota5hRemainingPercent: -1,
+      quota7dRemainingPercent: -1,
+      quota5hResetAfterSeconds: -1,
+      quota7dResetAfterSeconds: -1,
+      quota5hResetAt: -1,
+      quota7dResetAt: -1
+    });
+    await writeJson(path.join(dataRoot, "backups", "index.json"), index);
+    send({ type: "status", level: "success", code: "backup_saved", message: `保存成功：[${group}] ${safeName}` });
+    await sendAccountsList();
+  }
+
   async function rejectCloudAccountSync() {
     send({ type: "status", level: "warning", code: "cloud_account_sync_disabled", message: "当前版本不支持云账户同步功能" });
     send({ type: "cloud_account_status", autoDownload: false, intervalMinutes: 60, remainingSec: 0, running: false, passwordConfigured: false });
@@ -350,7 +393,8 @@ function createHost({ app, send, openExternal }) {
       if (action === "get_languages") return sendLanguageIndex(message.code);
       if (action === "get_language_pack") return sendLanguagePack(message.code);
       if (action === "list_accounts" || action === "refresh_accounts" || action === "refresh_accounts_batch" || action === "refresh_account") return sendAccountsList();
-      if (action === "backup_current" || action === "backup_current_auto") return rejectAccountBackup();
+      if (action === "backup_current") return rejectAccountBackup();
+      if (action === "backup_current_auto") return backupCurrent(`Codex ${nowText().replace(/[/:]/g, "-")}`);
       if (action === "switch_account") return switchAccount(message.account, message.group, message);
       if (action === "open_external_url" && message.url) return openExternal(String(message.url));
       if (action === "get_proxy_status") return send({ type: "proxy_status", running: false, port: 1455, timeoutSec: 600, allowLan: false, apiKey: "", dispatchMode: "round_robin", fixedAccount: "", fixedGroup: "personal" });
